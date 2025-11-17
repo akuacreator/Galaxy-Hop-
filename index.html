@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Galaxy Hop</title>
+  <meta name="theme-color" content="#3b1d6c" />
+
+  <!-- Inline icon (SVG data URL) -->
+  <link rel="icon" href="data:image/svg+xml;utf8,
+    <svg xmlns='http://www.w3.org/2000/svg' width='192' height='192'>
+      <rect width='192' height='192' rx='40' fill='%231a1236'/>
+      <defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
+        <stop offset='0' stop-color='%237b5ff8'/><stop offset='1' stop-color='%23ff7bd7'/>
+      </linearGradient></defs>
+      <circle cx='96' cy='96' r='60' fill='url(%23g)'/>
+      <circle cx='110' cy='84' r='18' fill='%23ffffff'/>
+    </svg>">
+
+  <style>
+    :root {
+      --bg: #0b0e1a; --fg: #ffffff;
+      --accent: #7b5ff8; --accent2: #ff7bd7;
+      --good: #39d98a; --danger: #ff5c5c;
+    }
+    html, body {
+      margin: 0; height: 100%;
+      background: linear-gradient(180deg,#0b0e1a 0%, #1a1236 100%);
+      color: var(--fg);
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    .app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+    header, footer { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; }
+    .brand { display: flex; gap: 10px; align-items: center; font-weight: 800; letter-spacing: 0.3px; }
+    .brand .dot { width: 14px; height: 14px; border-radius: 50%; background: conic-gradient(from 180deg, var(--accent), var(--accent2), var(--good), var(--accent)); box-shadow: 0 0 12px #7b5ff8aa; }
+    .actions { display: flex; gap: 8px; }
+    button {
+      appearance: none; background: #201648; border: 1px solid #3b2b80; color: var(--fg);
+      padding: 8px 12px; border-radius: 10px; font-weight: 700; box-shadow: 0 6px 16px #00000033;
+    }
+    button.primary { background: linear-gradient(90deg, var(--accent), var(--accent2)); border: none; }
+    .pill { border-radius: 999px; }
+    .score { font-weight: 800; background: #141028; border-radius: 999px; padding: 6px 12px; }
+    .canvas-wrap { position: relative; display: grid; place-items: center; padding: 6px; }
+    canvas {
+      width: 100%; height: auto; max-width: 720px; border-radius: 16px;
+      background: radial-gradient(1000px 1000px at 50% 0%, #1f1640 0%, #0b0e1a 70%);
+      box-shadow: inset 0 0 24px #00000055, 0 12px 40px #00000060;
+      touch-action: manipulation;
+    }
+    .overlay { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+    .card {
+      pointer-events: auto; background: #141028e6; border: 1px solid #2a2251cc;
+      padding: 16px; border-radius: 16px; max-width: 90vw; text-align: center; box-shadow: 0 12px 40px #00000080;
+    }
+    .title { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+    .subtitle { opacity: 0.85; margin-bottom: 14px; }
+    .hint { opacity: 0.8; font-size: 13px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><div class="dot"></div><div>Galaxy Hop</div></div>
+    <div class="actions">
+      <button id="btnPlay" class="primary pill">Play</button>
+      <button id="btnPause" class="pill">Pause</button>
+      <button id="btnSound" class="pill">Sound: On</button>
+    </div>
+  </header>
+
+  <div class="canvas-wrap">
+    <canvas id="game" width="720" height="1080" aria-label="Galaxy Hop game canvas"></canvas>
+    <div class="overlay">
+      <div id="menuCard" class="card">
+        <div class="title">Galaxy Hop</div>
+        <div class="subtitle">Tap to jump lanes. Dodge obstacles. Collect stars. How high can you score?</div>
+        <div class="row" style="justify-content:center; margin-bottom:10px;">
+          <button id="menuPlay" class="primary pill">Start</button>
+          <button id="menuHelp" class="pill">How to play</button>
+        </div>
+        <div class="hint">Installable PWA • Works offline • Designed by Akua</div>
+      </div>
+      <div id="helpCard" class="card hidden">
+        <div class="title">How to play</div>
+        <div class="subtitle">Quick tap hops up. Long press hops down. Avoid red blocks, grab green stars.</div>
+        <div class="row" style="justify-content:center;">
+          <button id="helpBack" class="pill">Back</button>
+        </div>
+      </div>
+      <div id="gameOverCard" class="card hidden">
+        <div class="title">Game Over</div>
+        <div class="subtitle">You collided! Ready to try again?</div>
+        <div class="row" style="justify-content:center; margin-bottom:10px;">
+          <button id="restartBtn" class="primary pill">Restart</button>
+        </div>
+        <div class="row" style="justify-content:center;">
+          <div id="finalScore" class="score">Score: 0</div>
+          <div id="bestScore" class="score">Best: 0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="row">
+      <div id="liveScore" class="score">Score: 0</div>
+      <div id="liveBest" class="score">Best: 0</div>
+    </div>
+    <div class="hint">Tip: Quick taps hop up. Long press hops down.</div>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const lanesY = [H * 0.25, H * 0.5, H * 0.75];
+
+  const state = {
+    running: false, paused: false,
+    score: 0, best: Number(localStorage.getItem('galaxyhop_best') || 0),
+    soundOn: true,
+    player: { x: W * 0.15, yIndex: 1, r: 24, color: '#7b5ff8' },
+    objs: [], stars: [],
+    lastSpawn: 0, lastStar: 0,
+    speed: 6, t: 0
+  };
+
+  const btnPlay = document.getElementById('btnPlay');
+  const btnPause = document.getElementById('btnPause');
+  const btnSound = document.getElementById('btnSound');
+  const menuCard = document.getElementById('menuCard');
+  const menuPlay = document.getElementById('menuPlay');
+  const menuHelp = document.getElementById('menuHelp');
+  const helpCard = document.getElementById('helpCard');
+  const helpBack = document.getElementById('helpBack');
+  const gameOverCard = document.getElementById('gameOverCard');
+  const restartBtn = document.getElementById('restartBtn');
+  const liveScore = document.getElementById('liveScore');
+  const liveBest = document.getElementById('liveBest');
+  const finalScore = document.getElementById('finalScore');
+  const bestScore = document.getElementById('bestScore');
+
+  liveBest.textContent = `Best: ${state.best}`;
+
+  const beep = (freq = 600, time = 0.05) => {
+    if (!state.soundOn) return;
+    try {
+      const actx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = actx.createOscillator();
+      const g = actx.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      o.connect(g); g.connect(actx.destination);
+      o.start();
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + time);
+      o.stop(actx.currentTime + time);
+    } catch(e) {}
+  };
+
+  const rand = (a, b) => Math.random() * (b - a) + a;
+  const choice = arr => arr[Math.floor(Math.random() * arr.length)];
+  const collideCircleRect = (cx, cy, r, rx, ry, rw, rh) => {
+    const nx = Math.max(rx, Math.min(cx, rx + rw));
+    const ny = Math.max(ry, Math.min(cy, ry + rh));
+    const dx = cx - nx, dy = cy - ny;
+    return dx*dx + dy*dy <= r*r;
+  };
+
+  const hideAllOverlays = () => {
+    menuCard.classList.add('hidden');
+    helpCard.classList.add('hidden');
+    gameOverCard.classList.add('hidden');
+  };
+
+  const reset = () => {
+    state.score = 0;
+    state.objs = [];
+    state.stars = [];
+    state.speed = 6;
+    state.t = 0;
+    state.player.yIndex = 1;
+    hideAllOverlays();
+    liveScore.textContent = `Score: ${state.score}`;
+  };
+
+  const showMenu = () => {
+    state.running = false;
+    state.paused = false;
+    hideAllOverlays();
+    menuCard.classList.remove('hidden');
+  };
+
+  const gameOver = () => {
+    state.running = false;
+    state.paused = false;
+    finalScore.textContent = `Score: ${state.score}`;
+    if (state.score > state.best) {
+      state.best = state.score;
+      localStorage.setItem('galaxyhop_best', String(state.best));
+    }
+    bestScore.textContent = `Best: ${state.best}`;
+    gameOverCard.classList.remove('hidden');
+    beep(200, 0.15);
+  };
+
+  // Input
+  let pressStart = 0;
+  const jumpUp = () => {
+    if (state.paused || !state.running) return;
+    if (state.player.yIndex > 0) { state.player.yIndex -= 1; beep(800, 0.05); }
+  };
+  const jumpDown = () => {
+    if (state.paused || !state.running) return;
+    if (state.player.yIndex < lanesY.length - 1) { state.player.yIndex += 1; beep(500, 0.05); }
+  };
+  const onTapStart = () => { pressStart = performance.now(); };
+  const onTapEnd = () => {
+    const d = performance.now() - pressStart;
+    if (d < 180) jumpUp(); else jumpDown();
+  };
+
+  canvas.addEventListener('touchstart', onTapStart, { passive: true });
+  canvas.addEventListener('touchend', onTapEnd, { passive: true });
+  canvas.addEventListener('mousedown', onTapStart);
+  canvas.addEventListener('mouseup', onTapEnd);
+
+  btnPlay.addEventListener('click', () => { start(); });
+  menuPlay.addEventListener('click', () => { start(); });
+  restartBtn.addEventListener('click', () => { reset(); start(); });
+  btnPause.addEventListener('click', () => {
+    state.paused = !state.paused;
+    btnPause.textContent = state.paused ? 'Resume' : 'Pause';
+  });
+  btnSound.addEventListener('click', () => {
+    state.soundOn = !state.soundOn;
+    btnSound.textContent = `Sound: ${state.soundOn ? 'On' : 'Off'}`;
+  });
+  menuHelp.addEventListener('click', () => {
+    menuCard.classList.add('hidden');
+    helpCard.classList.remove('hidden');
+  });
+  helpBack.addEventListener('click', () => {
+    helpCard.classList.add('hidden');
+    menuCard.classList.remove('hidden');
+  });
+
+  // Spawning
+  const spawnObstacle = () => {
+    const lane = Math.floor(rand(0, lanesY.length));
+    const h = rand(60, 140), w = rand(60, 140);
+    state.objs.push({ x: W + w, y: lanesY[lane] - h/2, w, h, color: choice(['#ff5c5c','#ff7b7b','#ff3b5e']) });
+  };
+  const spawnStar = () => {
+    const lane = Math.floor(rand(0, lanesY.length));
+    state.stars.push({ x: W + 40, y: lanesY[lane], r: 14, color: '#39d98a' });
+  };
+
+  // Drawing
+  const drawBackground = () => {
+    for (let i = 0; i < lanesY.length; i++) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, lanesY[i]); ctx.lineTo(W, lanesY[i]); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    for (let i = 0; i < 60; i++) {
+      const x = (i * 97 + state.t * 0.4) % W;
+      const y = (i * 173) % H;
+      ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI*2); ctx.fill();
+    }
+  };
+
+  const drawPlayer = () => {
+    const py = lanesY[state.player.yIndex];
+    const px = state.player.x;
+    const r = state.player.r;
+
+    const g = ctx.createRadialGradient(px, py, 6, px, py, 60);
+    g.addColorStop(0, '#7b5ff8aa'); g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, py, 60, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = state.player.color;
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(px + 8, py - 6, 6, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#0b0e1a';
+    ctx.beginPath(); ctx.arc(px + 9, py - 6, 3, 0, Math.PI*2); ctx.fill();
+  };
+
+  const drawRects = (arr) => {
+    arr.forEach(o => {
+      ctx.fillStyle = o.color;
+      ctx.fillRect(o.x - o.w/2, o.y - o.h/2, o.w, o.h);
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 2; ctx.strokeRect(o.x - o.w/2, o.y - o.h/2, o.w, o.h);
+    });
+  };
+
+  const drawStars = () => {
+    state.stars.forEach(s => {
+      const g = ctx.createRadialGradient(s.x, s.y, 2, s.x, s.y, 18);
+      g.addColorStop(0, '#39d98a'); g.addColorStop(1, 'transparent');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s.x, s.y, 18, 0, Math.PI*2); ctx.fill();
+
+      ctx.fillStyle = s.color;
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
+    });
+  };
+
+  // Update
+  const update = (dt) => {
+    if (!state.running || state.paused) return;
+    state.t += dt;
+
+    if (state.t - state.lastSpawn > Math.max(0.6, 1.6 - state.score * 0.0009)) {
+      spawnObstacle(); state.lastSpawn = state.t;
+    }
+    if (state.t - state.lastStar > 1.8) {
+      spawnStar(); state.lastStar = state.t;
+    }
+
+    const vx = state.speed * (1 + Math.min(1.5, state.score / 2000));
+    state.objs.forEach(o => { o.x -= vx; });
+    state.stars.forEach(s => { s.x -= vx; });
+
+    state.objs = state.objs.filter(o => o.x + o.w/2 > -40);
+    state.stars = state.stars.filter(s => s.x + s.r > -40);
+
+    const py = lanesY[state.player.yIndex];
+    state.objs.forEach(o => {
+      if (collideCircleRect(state.player.x, py, state.player.r, o.x - o.w/2, o.y - o.h/2, o.w, o.h)) gameOver();
+    });
+
+    state.stars = state.stars.filter(s => {
+      const hit = Math.hypot(s.x - state.player.x, s.y - py) <= state.player.r + s.r;
+      if (hit) { state.score += 50; liveScore.textContent = `Score: ${state.score}`; beep(1000, 0.05); return false; }
+      return true;
+    });
+
+    state.score += Math.floor(dt * 60);
+    liveScore.textContent = `Score: ${state.score}`;
+    liveBest.textContent = `Best: ${state.best}`;
+  };
+
+  // Main loop
+  let last = performance.now();
+  const frame = (now) => {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    ctx.clearRect(0, 0, W, H);
+    drawBackground(); drawRects(state.objs); drawStars(); drawPlayer();
+    update(dt);
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+
+  const start = () => {
+    reset(); state.running = true; state.paused = false; btnPause.textContent = 'Pause'; hideAllOverlays(); beep(700, 0.06);
+  };
+
+  // Expose for debug
+  window.__GH = state;
+
+  // Inline manifest via data URL, plus dynamic service worker via Blob URL
+  const manifest = {
+    name: "Galaxy Hop",
+    short_name: "Hop",
+    description: "Tap to hop lanes, dodge obstacles, collect stars. Fast, colorful, and installable.",
+    start_url: "./",
+    scope: "./",
+    display: "standalone",
+    background_color: "#0b0e1a",
+    theme_color: "#3b1d6c",
+    icons: [
+      {
+        src: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='192' height='192'><rect width='192' height='192' rx='40' fill='%231a1236'/><circle cx='96' cy='96' r='60' fill='%237b5ff8'/><circle cx='110' cy='84' r='18' fill='%23fff'/></svg>",
+        sizes: "192x192", type: "image/svg+xml", purpose: "any"
+      },
+      {
+        src: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512'><rect width='512' height='512' rx='96' fill='%231a1236'/><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%237b5ff8'/><stop offset='1' stop-color='%23ff7bd7'/></linearGradient></defs><circle cx='256' cy='256' r='160' fill='url(%23g)'/><circle cx='286' cy='226' r='48' fill='%23ffffff'/></svg>",
+        sizes: "512x512", type: "image/svg+xml", purpose: "any"
+      }
+    ]
+  };
+
+  // Attach manifest link
+  const manifestLink = document.createElement('link');
+  manifestLink.rel = 'manifest';
+  const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+  manifestLink.href = URL.createObjectURL(manifestBlob);
+  document.head.appendChild(manifestLink);
+
+  // Register inline service worker (works on HTTPS or localhost)
+  const swCode = `
+    const CACHE_NAME = 'galaxyhop-v1';
+    const ASSETS = ['.', './'];
+    self.addEventListener('install', (event) => {
+      event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', (event) => {
+      event.waitUntil(caches.keys().then(keys => Promise.all(keys.map(k => k !== CACHE_NAME ? caches.delete(k) : null))));
+      self.clients.claim();
+    });
+    self.addEventListener('fetch', (event) => {
+      const req = event.request;
+      if (req.method !== 'GET') return;
+      event.respondWith(
+        caches.match(req).then(cached => {
+          const fetchPromise = fetch(req).then(network => {
+            try {
+              const url = new URL(req.url);
+              if (url.origin === location.origin) caches.open(CACHE_NAME).then(c => c.put(req, network.clone()));
+            } catch(e) {}
+            return network;
+          }).catch(() => cached);
+          return cached || fetchPromise;
+        })
+      );
+    });
+  `;
+  if ('serviceWorker' in navigator) {
+    const swBlob = new Blob([swCode], { type: 'application/javascript' });
+    const swUrl = URL.createObjectURL(swBlob);
+    navigator.serviceWorker.register(swUrl).catch(()=>{});
+  }
+
+  // Start on load menu visible
+  showMenu();
+})();
+</script>
+</body>
+</html>
